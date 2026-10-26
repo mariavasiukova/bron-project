@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Мои брони</title>
+    <link rel="stylesheet" href="main-styles.css">
+</head>
+
+<body>
+    <div class="container" style="max-width: 1000px;"> <!-- Расширили контейнер для 2 колонок -->
+        <nav>
+            <a href="catalog.html">Каталог</a>
+            <a href="my-bookings.html">Мои брони</a>
+            <a href="admin-panel.html" id="admin-link" style="display:none;">Админка</a>
+            <a href="#" onclick="logout()" style="margin-left: auto;">Выйти</a>
+        </nav>
+        <h1>Мои бронирования</h1>
+
+        <div class="form-group" style="max-width: 300px;">
+            <label>Фильтр по статусу</label>
+            <select id="status-filter" onchange="loadBookings()">
+                <option value="all">Все</option>
+                <option value="active">Активные</option>
+                <option value="cancelled">Отмененные</option>
+            </select>
+        </div>
+
+        <div id="list" class="bookings-grid">
+            <p>Загрузка...</p>
+        </div>
+    </div>
+
+    <script>
+        const token = localStorage.getItem('token');
+        const role = localStorage.getItem('role');
+        if (!token) window.location.href = 'auth.html';
+
+        if (role === 'admin') document.getElementById('admin-link').style.display = 'block';
+
+        function logout() { localStorage.clear(); window.location.href = 'auth.html'; }
+
+        async function loadBookings() {
+            const filter = document.getElementById('status-filter').value;
+            const list = document.getElementById('list');
+            list.innerHTML = '<p>Загрузка...</p>';
+
+            try {
+                const res = await fetch('/api/bookings/my', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.status === 401) { logout(); return; }
+
+                let data = await res.json();
+                if (filter !== 'all') data = data.filter(b => b.status === filter);
+
+                if (data.length === 0) {
+                    list.innerHTML = '<p>Броней не найдено.</p>';
+                    return;
+                }
+
+                list.innerHTML = data.map(b => {
+                    const isFuture = new Date(b.start_time) > new Date();
+                    const st = new Date(b.start_time).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' });
+                    const en = new Date(b.end_time).toLocaleTimeString('ru-RU', { timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit' });
+
+                    const badgeClass = b.status === 'active' ? 'badge-active' : 'badge-cancelled';
+                    const statusText = b.status === 'active' ? 'Активна' : 'Отменена';
+
+                    return `
+                        <div class="card" style="display: flex; flex-direction: column; justify-content: space-between;">
+                            <div>
+                                <h3>${b.resource_name}</h3>
+                                <p><strong>Время:</strong> ${st} - ${en} (МСК)</p>
+                                <p><strong>Цель:</strong> ${b.purpose}</p>
+                                <p><strong>Статус:</strong> <span class="badge ${badgeClass}">${statusText}</span></p>
+                                ${b.cancellation_reason ? `<p><strong>Причина отмены:</strong> ${b.cancellation_reason}</p>` : ''}
+                            </div>
+                            ${isFuture && b.status === 'active'
+                            ? `<button onclick="cancelBooking(${b.id})" class="btn-cancel">Отменить бронь</button>`
+                            : ''}
+                        </div>
+                    `;
+                }).join('');
+            } catch (e) {
+                list.innerHTML = '<p class="error">Ошибка сети</p>';
+            }
+        }
+
+        async function cancelBooking(id) {
+            if (!confirm('Вы уверены, что хотите отменить эту бронь?')) return;
+            try {
+                const res = await fetch(`/api/bookings/${id}/cancel`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({})
+                });
+                if (res.ok) {
+                    alert('Бронь успешно отменена');
+                    loadBookings();
+                } else {
+                    const d = await res.json();
+                    alert(d.error);
+                }
+            } catch (e) {
+                alert('Ошибка сети');
+            }
+        }
+
+        loadBookings();
+    </script>
+</body>
+
+</html>

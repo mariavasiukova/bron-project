@@ -1,0 +1,45 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x]
+
+    steps:
+    - name: Получение кода
+      uses: actions/checkout@v3
+
+    - name: Установка Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+
+    - name: Установка зависимостей
+      run: npm ci
+
+    - name: Проверка синтаксиса сервера
+      run: node --check src/server.js
+
+    - name: Проверка синтаксиса сервисов
+      run: node --check src/services/reservation-logic.js
+
+    - name: Проверка синтаксиса роутов
+      run: |
+        node --check src/routes/auth-api.js
+        node --check src/routes/booking-api.js
+        node --check src/routes/resource-api.js
+        node --check src/routes/admin-api.js
+        node --check src/routes/audit-api.js
+
+    - name: Проверка синтаксиса middleware
+      run: node --check src/middleware/security.js

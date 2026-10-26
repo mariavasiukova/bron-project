@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Бронирование</title>
+    <link rel="stylesheet" href="main-styles.css">
+</head>
+
+<body>
+    <div class="container">
+        <nav>
+            <a href="catalog.html">Каталог</a>
+            <a href="my-bookings.html">Мои брони</a>
+            <a href="#" onclick="logout()" style="margin-left: auto;">Выйти</a>
+        </nav>
+
+        <div id="resource-info">
+            <p>Загрузка...</p>
+        </div>
+
+        <hr style="margin: 20px 0;">
+
+        <h2>Забронировать</h2>
+        <div class="form-group">
+            <label>Дата (МСК)</label>
+            <input type="date" id="date" onchange="loadAvailability()">
+        </div>
+        <div id="availability">
+            <p>Выберите дату, чтобы увидеть занятые интервалы.</p>
+        </div>
+
+        <div class="form-group">
+            <label>Начало (МСК)</label>
+            <input type="time" id="start" step="1800">
+        </div>
+        <div class="form-group">
+            <label>Окончание (МСК)</label>
+            <input type="time" id="end" step="1800">
+        </div>
+        <div class="form-group">
+            <label>Цель (от 5 до 300 символов)</label>
+            <textarea id="purpose" rows="3"></textarea>
+        </div>
+        <button onclick="createBooking()" id="submit-btn">Подтвердить бронь</button>
+        <div id="msg" class="error" style="margin-top:10px;"></div>
+        <div id="success" class="success" style="margin-top:10px;"></div>
+    </div>
+
+    <script>
+        const token = localStorage.getItem('token');
+        if (!token) window.location.href = 'auth.html';
+
+        function logout() { localStorage.clear(); window.location.href = 'auth.html'; }
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const resourceId = urlParams.get('id');
+        if (!resourceId) window.location.href = 'catalog.html';
+
+        // 1. Загрузка инфо о ресурсе
+        async function loadResource() {
+            try {
+                const res = await fetch(`/api/resources/${resourceId}`);
+                const data = await res.json();
+                document.getElementById('resource-info').innerHTML = `
+                    <h1>${data.name}</h1>
+                    <p>${data.description}</p>
+                    <p><strong>Где:</strong> ${data.location}</p>
+                `;
+            } catch (e) {
+                document.getElementById('resource-info').innerHTML = '<p class="error">Ошибка загрузки</p>';
+            }
+        }
+
+        // 2. Загрузка занятых интервалов
+        async function loadAvailability() {
+            const date = document.getElementById('date').value;
+            if (!date) return;
+
+            const box = document.getElementById('availability');
+            box.innerHTML = '<p>Загрузка...</p>';
+
+            try {
+                const res = await fetch(`/api/resources/${resourceId}/availability?date=${date}`);
+                const data = await res.json();
+
+                if (data.length === 0) {
+                    box.innerHTML = '<p class="success">На этот день свободно.</p>';
+                    return;
+                }
+
+                box.innerHTML = '<p><strong>Занято:</strong></p><ul>' +
+                    data.map(b => {
+                        const st = new Date(b.start_time).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                        const en = new Date(b.end_time).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                        return `<li>${st} - ${en}</li>`;
+                    }).join('') + '</ul>';
+            } catch (e) {
+                box.innerHTML = '<p class="error">Ошибка загрузки интервалов</p>';
+            }
+        }
+
+        // 3. Создание брони
+        async function createBooking() {
+            const date = document.getElementById('date').value;
+            const start = document.getElementById('start').value;
+            const end = document.getElementById('end').value;
+            const purpose = document.getElementById('purpose').value.trim();
+            const btn = document.getElementById('submit-btn');
+            const msg = document.getElementById('msg');
+            const success = document.getElementById('success');
+
+            msg.innerText = '';
+            success.innerText = '';
+
+            if (!date || !start || !end || !purpose) {
+                msg.innerText = 'Заполните все поля';
+                return;
+            }
+            if (purpose.length < 5) {
+                msg.innerText = 'Цель должна быть не менее 5 символов';
+                return;
+            }
+            if (start >= end) {
+                msg.innerText = 'Время окончания должно быть позже начала';
+                return;
+            }
+
+            // Формируем ISO с часовым поясом +03:00 (МСК)
+            const startISO = new Date(`${date}T${start}:00+03:00`).toISOString();
+            const endISO = new Date(`${date}T${end}:00+03:00`).toISOString();
+            // Генерируем ключ идемпотентности
+            const idemKey = 'idem-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
+
+            btn.disabled = true;
+            btn.innerText = 'Отправка...';
+
+            try {
+                const res = await fetch('/api/bookings', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                        'Idempotency-Key': idemKey
+                    },
+                    body: JSON.stringify({
+                        resourceId: parseInt(resourceId),
+                        startTime: startISO,
+                        endTime: endISO,
+                        purpose: purpose
+                    })
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) throw new Error(data.error || 'Ошибка бронирования');
+
+                success.innerHTML = `✅ Бронь создана!<br>
+                    Ресурс: ${document.querySelector('h1').innerText}<br>
+                    Дата: ${date}, время: ${start} - ${end} (МСК)<br>
+                    <strong>Номер записи: ${data.id}</strong>`;
+                loadAvailability();
+            } catch (err) {
+                msg.innerText = err.message;
+            } finally {
+                btn.disabled = false;
+                btn.innerText = 'Подтвердить бронь';
+            }
+        }
+
+        loadResource();
+        // По умолчанию ставим сегодня
+        document.getElementById('date').valueAsDate = new Date();
+        loadAvailability();
+    </script>
+</body>
+
+</html>

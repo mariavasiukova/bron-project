@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Каталог ресурсов</title>
+    <link rel="stylesheet" href="main-styles.css">
+</head>
+
+<body>
+    <div class="container" style="max-width: 1000px;">
+        <nav>
+            <a href="catalog.html">Каталог</a>
+            <a href="my-bookings.html">Мои брони</a>
+            <a href="admin-panel.html" id="admin-link" style="display:none;">Админка</a>
+            <a href="#" onclick="logout()" style="margin-left: auto;">Выйти</a>
+        </nav>
+        <h1>Доступные ресурсы</h1>
+
+        <div style="display:flex; gap:15px; margin-bottom:25px;">
+            <input type="text" id="search" placeholder="Поиск по названию..." oninput="loadResources()">
+            <input type="text" id="location" placeholder="Фильтр по местоположению..." oninput="loadResources()">
+        </div>
+
+        <!-- Здесь добавлен класс bookings-grid для сетки в 2 колонки -->
+        <div id="resources-list" class="bookings-grid">
+            <p>Загрузка...</p>
+        </div>
+    </div>
+
+    <script>
+        const token = localStorage.getItem('token');
+        const role = localStorage.getItem('role');
+
+        // Показываем ссылку на админку только если роль admin
+        if (role === 'admin') document.getElementById('admin-link').style.display = 'block';
+
+        function logout() {
+            localStorage.clear();
+            window.location.href = 'auth.html';
+        }
+
+        async function loadResources() {
+            const search = document.getElementById('search').value;
+            const location = document.getElementById('location').value;
+
+            const list = document.getElementById('resources-list');
+            // Показываем индикатор загрузки
+            list.innerHTML = '<p>Загрузка...</p>';
+
+            try {
+                const res = await fetch(`/api/resources?search=${search}&location=${location}`);
+                const data = await res.json();
+
+                if (data.length === 0) {
+                    list.innerHTML = '<p style="grid-column: 1 / -1;">Ничего не найдено. Попробуйте изменить фильтры.</p>';
+                    return;
+                }
+
+                // Применяем flex-контейнер для выравнивания кнопок внизу карточки
+                list.innerHTML = data.map(r => `
+                    <div class="card" style="display: flex; flex-direction: column; justify-content: space-between;">
+                        <div>
+                            <h3>${r.name}</h3>
+                            <p>${r.description}</p>
+                            <p><strong>Где:</strong> ${r.location}</p>
+                        </div>
+                        <button onclick="window.location.href='resource.html?id=${r.id}'">Перейти к бронированию</button>
+                    </div>
+                `).join('');
+            } catch (err) {
+                list.innerHTML = '<p class="error" style="grid-column: 1 / -1;">Ошибка загрузки ресурсов. Проверьте сеть.</p>';
+            }
+        }
+
+        // Загружаем ресурсы при открытии страницы
+        loadResources();
+    </script>
+</body>
+
+</html>

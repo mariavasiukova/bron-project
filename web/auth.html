@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Вход / Регистрация</title>
+    <link rel="stylesheet" href="main-styles.css">
+</head>
+
+<body>
+    <div class="container" style="max-width: 420px; margin-top: 80px;">
+        <h1 id="title" style="text-align: center;">Вход</h1>
+
+        <div class="form-group">
+            <label for="username">Логин</label>
+            <input type="text" id="username" placeholder="Введите ваш логин" autocomplete="username">
+        </div>
+        <div class="form-group">
+            <label for="password">Пароль</label>
+            <input type="password" id="password" placeholder="Введите пароль" autocomplete="current-password">
+        </div>
+
+        <button onclick="submitForm()" id="btn">Войти</button>
+
+        <div style="text-align: center; margin-top: 15px;">
+            <span style="color: #64748b; font-size: 14px;" id="switch-text">Нет аккаунта?</span>
+            <a href="#" onclick="toggleMode(event)"
+                style="color: #6366f1; font-weight: 600; text-decoration: none; font-size: 14px;"
+                id="switch-link">Зарегистрироваться</a>
+        </div>
+
+        <div id="msg" class="error" style="text-align: center; margin-top: 15px;"></div>
+    </div>
+
+    <script>
+        let isLogin = true;
+
+        function toggleMode(e) {
+            e.preventDefault();
+            isLogin = !isLogin;
+            document.getElementById('title').innerText = isLogin ? 'Вход' : 'Регистрация';
+            document.getElementById('btn').innerText = isLogin ? 'Войти' : 'Создать аккаунт';
+            document.getElementById('switch-text').innerText = isLogin ? 'Нет аккаунта?' : 'Уже есть аккаунт?';
+            document.getElementById('switch-link').innerText = isLogin ? 'Зарегистрироваться' : 'Войти';
+            document.getElementById('msg').innerText = '';
+        }
+
+        async function submitForm() {
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            const msg = document.getElementById('msg');
+            const btn = document.getElementById('btn');
+
+            msg.innerText = '';
+            if (!username || !password) {
+                msg.innerText = 'Заполните все поля';
+                return;
+            }
+            if (!isLogin && password.length < 6) {
+                msg.innerText = 'Пароль должен быть не менее 6 символов';
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerText = 'Загрузка...';
+
+            const url = isLogin ? '/api/auth/login' : '/api/auth/register';
+
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+
+                if (!res.ok) throw new Error(data.error || 'Ошибка входа');
+
+                localStorage.setItem('token', data.token);
+                localStorage.setItem('role', data.user.role);
+                localStorage.setItem('username', data.user.username);
+                window.location.href = 'catalog.html';
+            } catch (err) {
+                msg.innerText = err.message;
+                btn.disabled = false;
+                btn.innerText = isLogin ? 'Войти' : 'Создать аккаунт';
+            }
+        }
+    </script>
+</body>
+
+</html>
